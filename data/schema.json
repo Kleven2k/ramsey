@@ -1,0 +1,46 @@
+{
+  "_comment": "Ramsey system characterization data schema. All fields present; null = not yet measured.",
+
+  "meta": {
+    "timestamp":    "2026-04-13T00:00:00",
+    "sensor":       "NV_diamond",
+    "sensor_notes": "e.g. bulk crystal, nanoparticle, SiC V2 — whatever the professor supplies",
+    "operator":     "",
+    "notes":        ""
+  },
+
+  "hardware": {
+    "mw_power_dbm":       null,
+    "laser_power_mw":     null,
+    "init_laser_us":      null,
+    "mw_pulse_us":        null,
+    "readout_window_us":  null,
+    "ref_window_us":      null,
+    "n_points":           null,
+    "n_avg":              null,
+    "rep_rate_hz":        null
+  },
+
+  "odmr": {
+    "freqs_mhz":  [],
+    "contrast":   [],
+    "fit": {
+      "f0_mhz":         null,
+      "f0_err_mhz":     null,
+      "contrast_depth": null,
+      "linewidth_mhz":  null
+    }
+  },
+
+  "photons": {
+    "readout_counts_per_shot": null,
+    "ref_counts_per_shot":     null
+  },
+
+  "sensitivity": {
+    "sigma_f0_khz":   null,
+    "sigma_b_ut":     null,
+    "sigma_b_1s_ut":  null,
+    "bottleneck":     null
+  }
+}

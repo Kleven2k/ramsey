@@ -1,0 +1,15 @@
+┌──────────────────────────────────────────┐
+│  TITLE  (short, punchy — not the thesis) │
+│  Your name, dept                         │
+├────────────────┬─────────────────────────┤
+│  Motivation    │  System Overview        │
+│  Why ODMR?     │  Block diagram          │
+│  Why SiC?      │  (FPGA + ADF + sensor)  │
+├────────────────┼─────────────────────────┤
+│  Method        │  Results                │
+│  Pulse seq     │  Live ODMR dip plot     │
+│  diagram       │  (screenshot or live)   │
+├────────────────┴─────────────────────────┤
+│  Outlook / Next steps                    │
+│  (thermometry, navigation — one line ea) │
+└──────────────────────────────────────────┘

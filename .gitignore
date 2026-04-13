@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Simulation build artifacts
+sim/**/sim_build_*/
+sim/**/dump.vcd
+sim/**/results.xml
+
+# Build output
+build/
+runs/
+clockInfo.txt
+
+# Vivado temp files
+.Xil/
+
+# Vivado checkpoints and reports (generated, large)
+*.dcp
+*.rpt
+
+# Research PDFs (copyright — keep locally, not in repo)
+docs/**/*.pdf
+docs/expo/*.pptx
+
+# Characterization data (schema committed, actual data kept local)
+data/characterization_*.json
+
+# Vivado project files
+*.bit
+*.ltx
+*.log
+*.jou
+*.str
+*.xpr
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.srcs/
+vivado_*.backup.*
+
+# Internal scaffolding / personal notes (not for public repo)
+notebooks/odmr_physics_structure.md
+
+# Private / personal notes (not for public repo)
+docs/email_draft.txt
+docs/research/professor/outreach.md
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+dearpygui>=1.11
+numpy>=1.26
+scipy>=1.12
+pyserial>=3.5
