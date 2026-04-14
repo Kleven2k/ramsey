@@ -1,4 +1,24 @@
-# Ramsey
+<div align="center">
+<img src="docs/expo/logo_ramsey_dark.svg" width="250" height="250"/>
+
+# ramsey
+
+### FPGA ODMR system
+
+![License](https://img.shields.io/github/license/Kleven2k/ramsey)
+![Tests](https://img.shields.io/badge/cocotb%20tests-49%2F49%20passing-brightgreen)
+![Platform](https://img.shields.io/badge/platform-Nexys%20Video%20Artix--7-blue)
+![Language](https://img.shields.io/badge/RTL-SystemVerilog-orange)
+
+![Status](https://img.shields.io/badge/status-hardware%20bringup-yellow)
+![Phase](https://img.shields.io/badge/phase-7%2F9-blue)
+
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+![Vivado](https://img.shields.io/badge/Vivado-2024.x-red)
+
+</div>
+
+---
 
 Open-source FPGA-based pulse sequencer and photon counter for optically detected magnetic resonance (ODMR) readout of spin defects in diamond and silicon carbide.
 
@@ -37,7 +57,7 @@ data/         Characterization data schema
 
 ### Build the bitstream
 
-Requires Vivado 2023.x:
+Requires Vivado 2024.x:
 
 ```bash
 vivado -mode batch -source scripts/build.tcl
@@ -77,3 +97,5 @@ python runner_<module>.py
 ## References
 
 - [ODMR lab manual, Uni Siegen](https://www.physik.uni-siegen.de/nano-optics/education/teaching/lab_courses/odmr_manual_v1.3.1.pdf)
+
+Developed with assistance from Claude (Anthropic) for code generation and debugging
