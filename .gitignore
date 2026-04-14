@@ -48,6 +48,8 @@ notebooks/odmr_physics_structure.md
 # Private / personal notes (not for public repo)
 docs/email_draft.txt
 docs/research/professor/outreach.md
+sim/make_qr.py 
+docs/expo/qr_ramsey.png
 
 # OS
 .DS_Store
