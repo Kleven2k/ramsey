@@ -45,11 +45,11 @@ vivado_*.backup.*
 # Internal scaffolding / personal notes (not for public repo)
 notebooks/odmr_physics_structure.md
 
+# Expo materials (poster, QR, slides — kept local)
+docs/expo/
+
 # Private / personal notes (not for public repo)
-docs/email_draft.txt
-docs/research/professor/outreach.md
-sim/make_qr.py 
-docs/expo/qr_ramsey.png
+private/
 
 # OS
 .DS_Store
