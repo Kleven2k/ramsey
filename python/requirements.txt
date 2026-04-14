@@ -2,3 +2,7 @@ dearpygui>=1.11
 numpy>=1.26
 scipy>=1.12
 pyserial>=3.5
+pillow>=10.0
+qrcode>=7.4
+matplotlib>=3.8
+jupyterlab>=4.0
