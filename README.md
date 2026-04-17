@@ -51,7 +51,7 @@ See [`notebooks/odmr_physics.ipynb`](notebooks/odmr_physics.ipynb) for the full 
 
 ## System architecture
 <p align="center">
-<img src="assets/block_diagram.svg" width="75%" />
+<img src="assets/block_diagram_portrait.svg" width="75%" />
 </p>
 See [`docs/system_overview.md`](docs/system_overview.md) for a detailed description of each RTL module, the UART protocol, and the Python stack.
 
