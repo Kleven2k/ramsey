@@ -39,6 +39,20 @@ def main():
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (20,  110, 20))
             dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
 
+    with dpg.theme(tag="fit_series_theme"):
+        with dpg.theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line, (255, 160, 30),
+                                category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 2.5,
+                                category=dpg.mvThemeCat_Plots)
+
+    with dpg.theme(tag="contrast_series_theme"):
+        with dpg.theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line, (100, 180, 255),
+                                category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 1.2,
+                                category=dpg.mvThemeCat_Plots)
+
     with dpg.theme(tag="btn_accent"):
         with dpg.theme_component(dpg.mvButton):
             dpg.add_theme_color(dpg.mvThemeCol_Button,        (0,   100, 180))
@@ -50,6 +64,9 @@ def main():
     # Populated in on_config, read in on_packet to label the x-axis correctly.
     last_freqs_mhz   = []   # original (non-interleaved) sweep frequencies
     last_lock_in_en  = [False]  # wrapped in list so nonlocal assignment isn't needed
+
+    sweep_history  = []   # list of contrast arrays, newest last
+    MAX_SWEEPS     = 60
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
     def set_status(msg):
@@ -167,6 +184,7 @@ def main():
             set_status(f"Error: {e}")
 
     def on_demo():
+        sweep_history.clear()
         freq_start = dpg.get_value("freq_start")
         freq_stop  = dpg.get_value("freq_stop")
         freq_step  = dpg.get_value("freq_step")
@@ -174,12 +192,39 @@ def main():
         freqs, payload = synthetic.default_sweep(
             start=freq_start, stop=freq_stop, step=freq_step,
             f0_mhz=f0_demo, contrast=0.05, gamma_mhz=(freq_stop - freq_start) / 20,
-            ref_counts=500000, seed=42,
+            ref_counts=500000, seed=None,
         )
         last_freqs_mhz.clear()
         last_freqs_mhz.extend(freqs)
         dpg.set_axis_limits("x_axis", freq_start, freq_stop)
         on_packet(uart_comm.MSG_DATA, list(payload))
+
+    def update_heatmap(freqs, contrast):
+        sweep_history.append(list(contrast))
+        if len(sweep_history) > MAX_SWEEPS:
+            sweep_history.pop(0)
+        n_sweeps = len(sweep_history)
+        n_freqs  = len(freqs)
+        flat     = [float(v) for row in sweep_history for v in row]
+        vmin     = min(flat)
+        vmax     = max(flat)
+        if vmin == vmax:
+            vmax = vmin + 1e-6
+        if dpg.does_item_exist("history_heatmap"):
+            dpg.delete_item("history_heatmap")
+        dpg.add_heat_series(flat, rows=n_sweeps, cols=n_freqs,
+                            scale_min=vmin, scale_max=vmax,
+                            bounds_min=(freqs[0],  0),
+                            bounds_max=(freqs[-1], n_sweeps),
+                            parent="hm_y_axis",
+                            tag="history_heatmap",
+                            format="")
+        dpg.set_axis_limits("hm_x_axis", freqs[0], freqs[-1])
+        dpg.set_axis_limits("hm_y_axis", 0,         n_sweeps)
+        step = max(1, n_sweeps // 8)
+        dpg.set_axis_ticks("hm_y_axis",
+                           tuple((str(i), float(i))
+                                 for i in range(0, n_sweeps + 1, step)))
 
     def on_packet(msg_type, payload):
         if msg_type == uart_comm.MSG_ACK:
@@ -238,6 +283,7 @@ def main():
                 margin = max(abs(e_max - e_min) * 0.1, 0.005)
                 dpg.set_axis_limits("y_axis", e_min - margin, e_max + margin)
                 set_status(f"{n_pairs} pairs | {fit_info}")
+                update_heatmap(x_vals, error)
 
             else:
                 # ── Standard mode: Lorentzian fit ──────────────────────────────
@@ -265,6 +311,7 @@ def main():
                 margin = max(abs(c_max - c_min) * 0.1, 0.005)
                 dpg.set_axis_limits("y_axis", c_min - margin, c_max + margin)
                 set_status(f"{n_points_rx} pts | {fit_info}")
+                update_heatmap(x_vals, contrast)
 
     uart_comm.set_packet_callback(on_packet)
 
@@ -339,7 +386,7 @@ def main():
 
             # ── Plot panel ────────────────────────────────────────────────────
             with dpg.child_window(width=-1, height=-1, border=False):
-                with dpg.plot(label="ODMR Spectrum", height=-1, width=-1,
+                with dpg.plot(label="ODMR Spectrum", height=370, width=-1,
                               tag="odmr_plot"):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis,
@@ -357,12 +404,35 @@ def main():
                     dpg.set_axis_limits("x_axis", 1300, 1400)
                     dpg.set_axis_limits("y_axis", -0.1, 0.1)
 
+                dpg.add_spacer(height=4)
+
+                with dpg.plot(label="Sweep History", height=-1, width=-1,
+                              tag="history_plot", no_mouse_pos=True):
+                    dpg.add_plot_axis(dpg.mvXAxis,
+                                      label="Frequency (MHz)",
+                                      tag="hm_x_axis", no_gridlines=True)
+                    dpg.add_plot_axis(dpg.mvYAxis,
+                                      label="Sweep #",
+                                      tag="hm_y_axis", no_gridlines=True)
+                    dpg.add_heat_series([0.0], rows=1, cols=1,
+                                        scale_min=-0.1, scale_max=0.0,
+                                        bounds_min=(1300, 0),
+                                        bounds_max=(1400, 1),
+                                        parent="hm_y_axis",
+                                        tag="history_heatmap",
+                                        format="")
+                    dpg.set_axis_limits("hm_x_axis", 1300, 1400)
+                    dpg.set_axis_limits("hm_y_axis", 0, 1)
+                dpg.bind_colormap("history_plot", dpg.mvPlotColormap_Plasma)
+
     # ── Apply themes and font ─────────────────────────────────────────────────
     dpg.bind_font(default_font)
     dpg.bind_theme("global_theme")
-    dpg.bind_item_theme("connect_btn", "btn_red")
-    dpg.bind_item_theme("start_btn",   "btn_accent")
-    dpg.bind_item_theme("demo_btn",    "btn_accent")
+    dpg.bind_item_theme("connect_btn",      "btn_red")
+    dpg.bind_item_theme("start_btn",        "btn_accent")
+    dpg.bind_item_theme("demo_btn",         "btn_accent")
+    dpg.bind_item_theme("contrast_series",  "contrast_series_theme")
+    dpg.bind_item_theme("fit_series",       "fit_series_theme")
 
     dpg.setup_dearpygui()
     dpg.show_viewport()

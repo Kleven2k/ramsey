@@ -50,9 +50,9 @@ See [`notebooks/odmr_physics.ipynb`](notebooks/odmr_physics.ipynb) for the full 
 - Lock-in (FSK) detection mode for improved noise rejection
 
 ## System architecture
-
-<img src="docs/fpga_odmr_roadmap.svg" width="100%"/>
-
+<p align="center">
+<img src="assets/block_diagram.svg" width="75%" />
+</p>
 See [`docs/system_overview.md`](docs/system_overview.md) for a detailed description of each RTL module, the UART protocol, and the Python stack.
 
 ## Hardware
@@ -124,6 +124,13 @@ assets/       Logo
 data/         Characterization data schema
 ```
 
+## Demo
+
+<p align="center">
+<img src="assets/gui_demo.png" alt="GUI demo" width="75%">
+</p>
+The GUI runs in demo mode without any hardware. A synthetic ODMR sweep is generated with realistic Poisson noise, the Lorentzian fit updates live, and the extracted resonance frequency is shown in the status bar.
+
 ## Getting started
 
 ### Try the demo (no hardware needed)
@@ -152,12 +159,30 @@ vivado -mode batch -source scripts/build.tcl
 
 ### Run simulations
 
+Requires [Icarus Verilog](https://bleyer.org/icarus/) and cocotb in your venv:
+
 ```bash
+pip install cocotb
 cd sim/cocotb/<module>
 python runner_<module>.py
 ```
 
 All 49 tests should pass. Modules: `photon_counter`, `pulse_sequencer`, `uart_interface`, `shot_accumulator`, `spi_master`, `adf4351_ctrl`, `freq_calc`, `integration`.
+
+## Verification
+
+All RTL modules are verified with [cocotb](https://www.cocotb.org/) at 100 MHz. Each testbench drives the DUT with a software clock and asserts cycle-accurate behaviour.
+
+| Testbench | Tests | What is verified |
+|-----------|-------|-----------------|
+| `photon_counter` | 5 | Counts TTL pulses only while gate is high; holds count after gate closes; clears on request; saturates cleanly at max rate |
+| `pulse_sequencer` | 5 | CW and Ramsey timing (init / π/2 / τ / π/2 / readout phases); correct shot loop count; `counter_clear` asserted before each readout window; `busy` lifecycle |
+| `shot_accumulator` | 5 | Signal and reference counts accumulated into separate per-frequency entries; `freq_index` advances on `sweep_point_done` and resets on `sweep_start`; read-back via address port |
+| `uart` | 7 | TX and RX byte transfer at 115200 baud; full packet framing (header + CRC); CRC rejection of corrupt packets; noise recovery; zero-payload edge case |
+| `spi_master` | 4 | 32-bit SPI word clocked out MSB-first; LE pulse width and timing; back-to-back transfers |
+| `adf4351_ctrl` | 5 | Register sequence (R5→R0) sent on each frequency change; correct register word encoding for target frequencies |
+| `freq_calc` | 7 | Integer-N and fractional-N PLL word calculation verified against reference values at 1350 MHz, 1380 MHz, and 2870 MHz; output divider selection; fixed register fields preserved |
+| `integration` | 5 | End-to-end sweep: `pulse_sequencer → photon_counter × 2 → shot_accumulator`; APD pulses injected at known rates per gate window; accumulated totals match expected values across multi-frequency sweeps |
 
 ## Sensors targeted
 
