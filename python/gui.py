@@ -434,6 +434,15 @@ def main():
     dpg.bind_item_theme("contrast_series",  "contrast_series_theme")
     dpg.bind_item_theme("fit_series",       "fit_series_theme")
 
+    def on_resize():
+        vh       = dpg.get_viewport_height()
+        chrome   = 68  # connection bar + separator + window padding
+        available = max(400, vh - chrome)
+        dpg.configure_item("odmr_plot",    height=int(available * 0.60))
+        dpg.configure_item("history_plot", height=int(available * 0.38))
+
+    dpg.set_viewport_resize_callback(on_resize)
+
     dpg.setup_dearpygui()
     dpg.show_viewport()
 
@@ -446,6 +455,7 @@ def main():
     dpg.set_viewport_pos([(sw - vw) // 2, (sh - vh) // 2])
 
     dpg.set_primary_window("Primary Window", True)
+    on_resize()
     dpg.start_dearpygui()
     dpg.destroy_context()
 
