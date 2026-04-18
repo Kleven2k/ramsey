@@ -4,7 +4,10 @@ All RTL modules are verified with [cocotb](https://www.cocotb.org/) at 100 MHz. 
 
 ## Running the tests
 
+Requires [Icarus Verilog](https://bleyer.org/icarus/) and cocotb in your venv:
+
 ```bash
+pip install cocotb
 cd sim/cocotb/<module>
 python runner_<module>.py
 ```
@@ -36,9 +39,7 @@ Counts TTL rising edges on `apd_in` while `gate` is high. The count is held afte
 | `test_gate_inhibit` | Pulses outside the gate window are ignored |
 | `test_hold_after_gate` | Count register holds its value after gate goes low |
 | `test_clear` | `counter_clear` resets the count to zero |
-| `test_max_rate` | One pulse per clock cycle — counter saturates cleanly without overflow |
-
-*Waveform: gate / apd_in / count — to be added*
+| `test_max_rate` | Pulses at minimum 4-cycle period (25 MHz) — all counted correctly |
 
 ---
 
@@ -54,8 +55,6 @@ Generates the laser gate, MW gate, counter clear, and reference gate signals wit
 | `test_counter_clear` | `counter_clear` is asserted before each readout window opens |
 | `test_busy` | `busy` goes high on `run` and low after final shot completes |
 
-*Waveform: laser_gate / mw_gate / counter_clear / gate / ref_gate — to be added*
-
 ---
 
 ## shot_accumulator
@@ -69,9 +68,6 @@ Accumulates photon counts across multiple shots for each frequency point in a sw
 | `test_accumulation_multi_shot` | Counts from repeated shots add up correctly |
 | `test_freq_index_advances` | `freq_index` increments on `sweep_point_done` |
 | `test_run_resets_pointer` | `sweep_start` resets write pointer back to address 0 |
-
-Waveform shows `test_freq_index_advances`: gate opens for two frequency points, `sig_count` is captured on each falling edge, `sweep_point_done` advances `freq_index`, and `rd_sig` confirms independent storage at each address.
-
 
 ---
 
@@ -89,8 +85,6 @@ Implements the full packet framing layer: `[0xAA][TYPE][LEN_HI][LEN_LO][PAYLOAD]
 | `test_tx_zero_payload` | Zero-length payload packet handled correctly |
 | `test_rx_noise_recovery` | Receiver recovers cleanly after a framing error |
 
-*Waveform: tx / rx / valid / crc_err — to be added*
-
 ---
 
 ## spi_master
@@ -107,8 +101,6 @@ Implements the full packet framing layer: `[0xAA][TYPE][LEN_HI][LEN_LO][PAYLOAD]
 | `test_ones_word` | All-ones word transferred without glitches |
 | `test_back_to_back` | Two consecutive transfers complete without gap errors |
 
-*Waveform: sclk / mosi / le / busy / done — to be added*
-
 ---
 
 ## adf4351_ctrl
@@ -120,10 +112,8 @@ Controls the ADF4351 PLL by programming all six registers (R5 → R0) over SPI o
 | `test_six_registers_sent` | Exactly six SPI transfers occur per frequency update |
 | `test_register_order` | Registers are sent R5 first, R0 last |
 | `test_busy_during_transfer` | `busy` is asserted for the full six-register sequence |
-| `test_debounce` | Rapid `freq_update` pulses do not trigger overlapping transfers |
+| `test_debounce` | `lock_detect` glitch shorter than debounce window does not assert `spi_ready` |
 | `test_ready_then_idle` | `spi_ready` correctly gates the next transfer |
-
-*Waveform: freq_update / busy / spi_le / register sequence — to be added*
 
 ---
 
@@ -160,4 +150,3 @@ Reference path: `apd_ref → photon_counter (ref_gate) → shot_accumulator.ref_
 | `test_signal_ref_independent` | Signal and reference paths accumulate to different values |
 | `test_busy_lifecycle` | `busy` high during sweep, low before and after |
 
-*Waveform: full signal chain across one sweep — to be added*
