@@ -120,7 +120,7 @@ scripts/      Vivado build TCL, logo and QR code generators
 python/       GUI, Lorentzian fitting, UART comms, characterization script
 notebooks/    Physics background (ODMR, Zeeman, shot noise, lock-in)
 docs/         System overview and architecture diagram
-assets/       Logo
+assets/       Logo, block diagrams, timing diagram, waveforms, demo screenshot
 data/         Characterization data schema
 ```
 
@@ -167,7 +167,7 @@ cd sim/cocotb/<module>
 python runner_<module>.py
 ```
 
-All 49 tests should pass. Modules: `photon_counter`, `pulse_sequencer`, `uart_interface`, `shot_accumulator`, `spi_master`, `adf4351_ctrl`, `freq_calc`, `integration`.
+All 49 tests should pass. Modules: `photon_counter`, `pulse_sequencer`, `uart`, `shot_accumulator`, `spi_master`, `adf4351_ctrl`, `freq_calc`, `integration`.
 
 ## Verification
 
@@ -179,7 +179,7 @@ All RTL modules are verified with [cocotb](https://www.cocotb.org/) at 100 MHz. 
 | `pulse_sequencer` | 5 | CW and Ramsey timing (init / π/2 / τ / π/2 / readout phases); correct shot loop count; `counter_clear` asserted before each readout window; `busy` lifecycle |
 | `shot_accumulator` | 5 | Signal and reference counts accumulated into separate per-frequency entries; `freq_index` advances on `sweep_point_done` and resets on `sweep_start`; read-back via address port |
 | `uart` | 7 | TX and RX byte transfer at 115200 baud; full packet framing (header + CRC); CRC rejection of corrupt packets; noise recovery; zero-payload edge case |
-| `spi_master` | 4 | 32-bit SPI word clocked out MSB-first; LE pulse width and timing; back-to-back transfers |
+| `spi_master` | 7 | 32-bit SPI word clocked out MSB-first; LE pulse width and timing; back-to-back transfers |
 | `adf4351_ctrl` | 5 | Register sequence (R5→R0) sent on each frequency change; correct register word encoding for target frequencies |
 | `freq_calc` | 7 | Integer-N and fractional-N PLL word calculation verified against reference values at 1350 MHz, 1380 MHz, and 2870 MHz; output divider selection; fixed register fields preserved |
 | `integration` | 5 | End-to-end sweep: `pulse_sequencer → photon_counter × 2 → shot_accumulator`; APD pulses injected at known rates per gate window; accumulated totals match expected values across multi-frequency sweeps |
