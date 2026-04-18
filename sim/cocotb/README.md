@@ -70,11 +70,8 @@ Accumulates photon counts across multiple shots for each frequency point in a sw
 | `test_freq_index_advances` | `freq_index` increments on `sweep_point_done` |
 | `test_run_resets_pointer` | `sweep_start` resets write pointer back to address 0 |
 
-*Waveform: sweep_point_done / freq_index / wr_sig / wr_ref — to be added*
+Waveform shows `test_freq_index_advances`: gate opens for two frequency points, `sig_count` is captured on each falling edge, `sweep_point_done` advances `freq_index`, and `rd_sig` confirms independent storage at each address.
 
-<p align="center">
-<img src="../../assets/shot_accumulator_waveform.png" width="100%" height="100%">
-</p>
 
 ---
 
