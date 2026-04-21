@@ -136,16 +136,8 @@ module shot_accumulator #(
         rd_ref <= ref_mem[rd_addr];
     end
 
-    // ── Initialise memory to zero on reset ───────────────────────────────────
-    integer i;
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            for (i = 0; i < DEPTH; i = i + 1) begin
-                sig_mem[i] <= 32'd0;
-                ref_mem[i] <= 32'd0;
-            end
-        end
-    end
+    // sig_mem / ref_mem are distributed RAM — Vivado initialises all cells to
+    // zero at configuration time, so no explicit runtime reset is needed.
 
 endmodule
 

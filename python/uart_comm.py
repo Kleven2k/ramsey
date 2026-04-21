@@ -94,5 +94,7 @@ def _reader_thread():
             msg_type, payload = recv_packet()
             if _on_packet:
                 _on_packet(msg_type, payload)
+        except serial.SerialTimeoutException:
+            continue  # idle timeout — keep listening
         except Exception:
             break

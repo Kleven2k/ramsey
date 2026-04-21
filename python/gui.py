@@ -310,7 +310,9 @@ def main():
                 c_max = max(contrast)
                 margin = max(abs(c_max - c_min) * 0.1, 0.005)
                 dpg.set_axis_limits("y_axis", c_min - margin, c_max + margin)
-                set_status(f"{n_points_rx} pts | {fit_info}")
+                avg_sig = sum(sig_counts) // max(len(sig_counts), 1)
+                avg_ref = sum(ref_counts) // max(len(ref_counts), 1)
+                set_status(f"{n_points_rx} pts | {fit_info} | sig={avg_sig} ref={avg_ref}")
                 update_heatmap(x_vals, contrast)
 
     uart_comm.set_packet_callback(on_packet)

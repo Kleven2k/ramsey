@@ -225,10 +225,8 @@ module uart_interface #(
                         raw_tx_start <= 1'b1;
                         if (tx_len_reg == 16'd0)
                             tx_state <= TX_CRC;
-                        else begin
-                            tx_payload_req <= 1'b1;  // request first byte
-                            tx_state       <= TX_PAYLOAD;
-                        end
+                        else
+                            tx_state <= TX_PAYLOAD;
                     end
 
                 TX_PAYLOAD:

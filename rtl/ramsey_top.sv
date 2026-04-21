@@ -210,7 +210,7 @@ module ramsey_top (
         .r4         (fc_r4),
         .r5         (fc_r5),
         .load       (adf_load),
-        .lock_detect(lock_detect),
+        .lock_detect(1'b1),        // BYPASS: tie high for bench test without lock
         .spi_ready  (spi_ready),
         .busy       (),           // not used; spi_ready is the handshake signal
         .sclk       (spi_clk),
