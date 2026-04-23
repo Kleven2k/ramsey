@@ -21,12 +21,12 @@
 // band-select divider, and RF enable without touching this module.
 
 module freq_calc #(
-    parameter [31:0] FREF_KHZ  = 32'd25000,       // reference clock in kHz
+    parameter [31:0] FREF_KHZ  = 32'd25000,        // reference clock in kHz — UPDATE if using ext ref via MCLK
     parameter [31:0] FIXED_MOD = 32'd1000,         // fixed ADF4351 MOD value
-    parameter [31:0] R2_CFG    = 32'h00004E42,     // charge pump / R-counter config
-    parameter [31:0] R3_CFG    = 32'h000004B3,     // clock divider config
-    parameter [31:0] R4_BASE   = 32'h00859CC4,     // R4 with divider bits [22:20] = 0
-    parameter [31:0] R5_CFG    = 32'h00580005      // LD pin mode
+    parameter [31:0] R2_CFG    = 32'h18004062,     // MUXOUT=digital LD, PD_POL=+, CP=0.31mA, R=1
+    parameter [31:0] R3_CFG    = 32'h00000003,     // R3 defaults: clock divider off
+    parameter [31:0] R4_BASE   = 32'h008FA03C,     // BSCD=250 (100kHz margin), fundamental feedback, RF enabled
+    parameter [31:0] R5_CFG    = 32'h00200005      // LD pin mode = digital lock detect
 ) (
     input  logic        clk,
     input  logic        rst,
