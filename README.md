@@ -82,9 +82,13 @@ All signals are 3.3 V LVCMOS. Connect the ADF4351 and APD to the Pmod headers as
 | JC pin | FPGA pin | Signal | Direction | ADF4351 pin |
 |--------|----------|--------|-----------|-------------|
 | 1 | Y6 | `spi_clk` | Output | CLK |
-| 2 | AA6 | `spi_mosi` | Output | DATA |
+| 2 | AA6 | `spi_mosi` | Output | DAT |
 | 3 | AA8 | `spi_le` | Output | LE |
 | 4 | AB8 | `lock_detect` | Input | LD |
+| 5 | GND | Ground | — | GND |
+| 6 | 3.3 V | CE enable | — | CE |
+
+> **ADF4351 board power:** 5 V DC supply to the barrel connector. On the ADF4351 header, jumper PDR → 3V3 (both on the header itself — no FPGA connection needed).
 
 **UART (USB-UART bridge on-board)**
 
