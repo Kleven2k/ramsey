@@ -197,7 +197,7 @@ module ramsey_top (
     logic adf_load;
 
     adf4351_ctrl #(
-        .DEBOUNCE_CYCLES(1000),   // ~10 µs at 100 MHz
+        .DEBOUNCE_CYCLES(5000000), // 50 ms at 100 MHz — PLL lock settle time
         .SPI_CLK_DIV    (50),     // 1 MHz SCLK (matches Arduino)
         .SPI_LE_CYCLES  (40)
     ) u_adf (

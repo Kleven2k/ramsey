@@ -200,11 +200,13 @@ def main():
         on_packet(uart_comm.MSG_DATA, list(payload))
 
     def update_heatmap(freqs, contrast):
+        n_freqs = len(freqs)
+        if sweep_history and len(sweep_history[0]) != n_freqs:
+            sweep_history.clear()
         sweep_history.append(list(contrast))
         if len(sweep_history) > MAX_SWEEPS:
             sweep_history.pop(0)
         n_sweeps = len(sweep_history)
-        n_freqs  = len(freqs)
         flat     = [float(v) for row in sweep_history for v in row]
         vmin     = min(flat)
         vmax     = max(flat)

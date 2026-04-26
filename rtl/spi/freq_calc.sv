@@ -7,14 +7,16 @@
 // Formula:  fout = fref × (INT + FRAC/MOD) / OUTDIV
 // With fixed MOD (default 1000) this gives 25 kHz resolution at 25 MHz fref.
 //
-// Algorithm (sequential, ~70 clock cycles):
+// Algorithm (sequential, ~200 clock cycles including GCD reduction):
 //   1. Select output divider D so that fvco = fout × D falls in [2.2, 4.4] GHz
 //   2. Divide fvco by fref (32-bit restoring divider) → INT, remainder
 //   3. Multiply remainder by MOD, divide by fref → FRAC
-//   4. Pack INT, FRAC, MOD, OUTDIV into r0/r1/r4; r2/r3/r5 are parameters
+//   4. GCD-reduce FRAC/MOD using Stein's binary algorithm (minimises sigma-delta
+//      noise so digital lock detect asserts reliably)
+//   5. Pack INT, FRAC_reduced, MOD_reduced, OUTDIV into r0/r1/r4
 //
 // Inputs are in kHz to avoid floating point.
-// At 100 MHz system clock total latency ≈ 700 ns — negligible vs PLL lock time.
+// At 100 MHz system clock total latency ≈ 2 µs — negligible vs PLL lock time.
 //
 // R4 note: only bits [22:20] (RF divider select) are computed by this module.
 // All other R4 bits come from R4_BASE so the user can set output power,
@@ -55,46 +57,60 @@ module freq_calc #(
     end
 
     // ── FSM ──────────────────────────────────────────────────────────────────
-    typedef enum logic [2:0] {
+    typedef enum logic [3:0] {
         IDLE,
-        DIV_INT,   // restoring division: fvco / fref → INT + remainder
-        MUL_REM,   // multiply remainder by MOD, set up FRAC division
-        DIV_FRAC,  // restoring division: (remainder×MOD) / fref → FRAC
-        PACK,      // latch FRAC, assemble registers
+        DIV_INT,       // restoring division: fvco / fref → INT + remainder
+        MUL_REM,       // multiply remainder by MOD, set up FRAC division
+        DIV_FRAC,      // restoring division: (remainder×MOD) / fref → FRAC
+        PACK,          // latch FRAC; branch to GCD or DONE
+        GCD_INIT,      // load Stein's GCD operands
+        GCD_STEP,      // one step of Stein's binary GCD
+        REDUCE_WAIT,   // restoring division for FRAC/GCD or MOD/GCD
+        REDUCE_LATCH,  // latch quotient, set up next reduction or finish
         DONE_ST
     } state_t;
 
     state_t state;
 
     // ── Shared restoring divider ──────────────────────────────────────────────
-    logic [4:0]  bit_idx;       // counts 31 down to 0
-    logic [31:0] dividend_r;    // original dividend (indexed by bit_idx)
-    logic [31:0] divisor_r;     // = FREF_KHZ
-    logic [31:0] quotient_r;    // accumulates result bits
-    logic [31:0] remainder_r;   // partial remainder
+    logic [4:0]  bit_idx;
+    logic [31:0] dividend_r;
+    logic [31:0] divisor_r;
+    logic [31:0] quotient_r;
+    logic [31:0] remainder_r;
 
-    // Combinational: one divider step
-    // Shift remainder left, bring in current dividend bit
     logic [31:0] div_partial;
     assign div_partial = {remainder_r[30:0], dividend_r[bit_idx]};
 
     // ── Latched results ───────────────────────────────────────────────────────
     logic [15:0] int_r;
     logic [11:0] frac_r;
+    logic [11:0] mod_r;     // GCD-reduced MOD (output in R1)
     logic [2:0]  outdiv_r;
+
+    // ── GCD state (Stein's binary algorithm) ─────────────────────────────────
+    logic [11:0] gcd_a, gcd_b, gcd_result;
+    logic [3:0]  gcd_shift;
+    logic        reducing_mod; // 0 = reducing frac_r, 1 = reducing FIXED_MOD
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            state       <= IDLE;
-            done        <= 1'b0;
-            int_r       <= '0;
-            frac_r      <= '0;
-            outdiv_r    <= '0;
-            dividend_r  <= '0;
-            divisor_r   <= '0;
-            quotient_r  <= '0;
-            remainder_r <= '0;
-            bit_idx     <= '0;
+            state        <= IDLE;
+            done         <= 1'b0;
+            int_r        <= '0;
+            frac_r       <= '0;
+            mod_r        <= FIXED_MOD[11:0];
+            outdiv_r     <= '0;
+            dividend_r   <= '0;
+            divisor_r    <= '0;
+            quotient_r   <= '0;
+            remainder_r  <= '0;
+            bit_idx      <= '0;
+            gcd_a        <= '0;
+            gcd_b        <= '0;
+            gcd_result   <= '0;
+            gcd_shift    <= '0;
+            reducing_mod <= 1'b0;
         end else begin
             done <= 1'b0;
 
@@ -114,17 +130,14 @@ module freq_calc #(
                 end
 
                 // ── fvco / fref → INT ─────────────────────────────────────────
-                // Each cycle processes one bit of the dividend, MSB first.
-                // quotient_r[i] ← 1 if partial remainder ≥ divisor.
                 DIV_INT: begin
                     if (div_partial >= divisor_r) begin
-                        remainder_r        <= div_partial - divisor_r;
+                        remainder_r         <= div_partial - divisor_r;
                         quotient_r[bit_idx] <= 1'b1;
                     end else begin
-                        remainder_r        <= div_partial;
+                        remainder_r         <= div_partial;
                         quotient_r[bit_idx] <= 1'b0;
                     end
-
                     if (bit_idx == 5'd0) begin
                         state <= MUL_REM;
                     end else begin
@@ -132,9 +145,7 @@ module freq_calc #(
                     end
                 end
 
-                // ── Set up FRAC division ───────────────────────────────────────
-                // quotient_r and remainder_r now hold final INT division results.
-                // remainder_r < FREF_KHZ (25000), FIXED_MOD = 1000 → product < 2^25 (no overflow).
+                // ── Set up FRAC division ──────────────────────────────────────
                 MUL_REM: begin
                     int_r       <= quotient_r[15:0];
                     dividend_r  <= remainder_r * FIXED_MOD;
@@ -148,13 +159,12 @@ module freq_calc #(
                 // ── (remainder × MOD) / fref → FRAC ──────────────────────────
                 DIV_FRAC: begin
                     if (div_partial >= divisor_r) begin
-                        remainder_r        <= div_partial - divisor_r;
+                        remainder_r         <= div_partial - divisor_r;
                         quotient_r[bit_idx] <= 1'b1;
                     end else begin
-                        remainder_r        <= div_partial;
+                        remainder_r         <= div_partial;
                         quotient_r[bit_idx] <= 1'b0;
                     end
-
                     if (bit_idx == 5'd0) begin
                         state <= PACK;
                     end else begin
@@ -162,10 +172,89 @@ module freq_calc #(
                     end
                 end
 
-                // ── Latch FRAC and assemble registers ─────────────────────────
+                // ── Latch FRAC; skip GCD if integer-N ────────────────────────
                 PACK: begin
                     frac_r <= quotient_r[11:0];
-                    state  <= DONE_ST;
+                    mod_r  <= FIXED_MOD[11:0];
+                    if (quotient_r[11:0] == 12'd0) begin
+                        state <= DONE_ST;   // FRAC=0 → integer-N, no reduction needed
+                    end else begin
+                        state <= GCD_INIT;
+                    end
+                end
+
+                // ── Stein's binary GCD: load operands ────────────────────────
+                GCD_INIT: begin
+                    gcd_a     <= frac_r;
+                    gcd_b     <= FIXED_MOD[11:0];
+                    gcd_shift <= 4'd0;
+                    state     <= GCD_STEP;
+                end
+
+                // ── Stein's binary GCD: one step per cycle ────────────────────
+                // Invariant: GCD(original_frac, FIXED_MOD) = GCD(gcd_a, gcd_b) × 2^gcd_shift
+                GCD_STEP: begin
+                    if (gcd_a == 12'd0 || gcd_b == 12'd0) begin
+                        // GCD found
+                        gcd_result  <= (gcd_a | gcd_b) << gcd_shift;
+                        dividend_r  <= {20'b0, frac_r};
+                        divisor_r   <= {20'b0, (gcd_a | gcd_b) << gcd_shift};
+                        quotient_r  <= '0;
+                        remainder_r <= '0;
+                        bit_idx     <= 5'd31;
+                        reducing_mod <= 1'b0;
+                        state       <= REDUCE_WAIT;
+                    end else if (gcd_a[0] == 1'b0 && gcd_b[0] == 1'b0) begin
+                        // Both even: extract common factor of 2
+                        gcd_a     <= gcd_a >> 1;
+                        gcd_b     <= gcd_b >> 1;
+                        gcd_shift <= gcd_shift + 4'd1;
+                    end else if (gcd_a[0] == 1'b0) begin
+                        gcd_a <= gcd_a >> 1;
+                    end else if (gcd_b[0] == 1'b0) begin
+                        gcd_b <= gcd_b >> 1;
+                    end else if (gcd_a >= gcd_b) begin
+                        // Both odd, a≥b: GCD(a,b) = GCD((a-b)/2, b)
+                        gcd_a <= (gcd_a - gcd_b) >> 1;
+                    end else begin
+                        // Both odd, b>a: GCD(a,b) = GCD(a, (b-a)/2)
+                        gcd_b <= (gcd_b - gcd_a) >> 1;
+                    end
+                end
+
+                // ── Restoring division for GCD reduction ─────────────────────
+                REDUCE_WAIT: begin
+                    if (div_partial >= divisor_r) begin
+                        remainder_r         <= div_partial - divisor_r;
+                        quotient_r[bit_idx] <= 1'b1;
+                    end else begin
+                        remainder_r         <= div_partial;
+                        quotient_r[bit_idx] <= 1'b0;
+                    end
+                    if (bit_idx == 5'd0) begin
+                        state <= REDUCE_LATCH;
+                    end else begin
+                        bit_idx <= bit_idx - 1'b1;
+                    end
+                end
+
+                // ── Latch result; set up next reduction or finish ─────────────
+                REDUCE_LATCH: begin
+                    if (!reducing_mod) begin
+                        // Just finished FRAC/GCD; now compute FIXED_MOD/GCD
+                        frac_r      <= quotient_r[11:0];
+                        dividend_r  <= FIXED_MOD;
+                        divisor_r   <= {20'b0, gcd_result};
+                        quotient_r  <= '0;
+                        remainder_r <= '0;
+                        bit_idx     <= 5'd31;
+                        reducing_mod <= 1'b1;
+                        state        <= REDUCE_WAIT;
+                    end else begin
+                        // Just finished FIXED_MOD/GCD; done
+                        mod_r <= quotient_r[11:0];
+                        state <= DONE_ST;
+                    end
                 end
 
                 DONE_ST: begin
@@ -178,13 +267,12 @@ module freq_calc #(
     end
 
     // ── Register packing ──────────────────────────────────────────────────────
-    // R0: [30:15]=INT, [14:3]=FRAC, [2:0]=3'b000
+    // R0: [30:15]=INT, [14:3]=FRAC_reduced, [2:0]=3'b000
     assign r0 = {1'b0, int_r, frac_r, 3'b000};
 
-    // R1: [26:15]=PHASE(=1, fixed), [14:3]=MOD, [2:0]=3'b001
-    assign r1 = {4'b0, 1'b1, 12'h001, FIXED_MOD[11:0], 3'b001}; // bit27=1: 8/9 prescaler required for INT≥75
+    // R1: bit27=1 (8/9 prescaler), [26:15]=PHASE=1, [14:3]=MOD_reduced, [2:0]=3'b001
+    assign r1 = {4'b0, 1'b1, 12'h001, mod_r, 3'b001};
 
-    // R2, R3, R5: fixed hardware configuration
     assign r2 = R2_CFG;
     assign r3 = R3_CFG;
     assign r5 = R5_CFG;
