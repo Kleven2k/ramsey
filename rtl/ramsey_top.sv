@@ -198,8 +198,8 @@ module ramsey_top (
 
     adf4351_ctrl #(
         .DEBOUNCE_CYCLES(1000),   // ~10 µs at 100 MHz
-        .SPI_CLK_DIV    (5),      // 10 MHz SCLK
-        .SPI_LE_CYCLES  (4)
+        .SPI_CLK_DIV    (50),     // 1 MHz SCLK (matches Arduino)
+        .SPI_LE_CYCLES  (40)
     ) u_adf (
         .clk        (clk),
         .rst        (rst),
@@ -210,7 +210,7 @@ module ramsey_top (
         .r4         (fc_r4),
         .r5         (fc_r5),
         .load       (adf_load),
-        .lock_detect(1'b1),        // BYPASS: tie high for bench test without lock
+        .lock_detect(lock_detect),
         .spi_ready  (spi_ready),
         .busy       (),           // not used; spi_ready is the handshake signal
         .sclk       (spi_clk),

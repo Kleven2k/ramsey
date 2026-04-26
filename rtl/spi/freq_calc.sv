@@ -21,12 +21,12 @@
 // band-select divider, and RF enable without touching this module.
 
 module freq_calc #(
-    parameter [31:0] FREF_KHZ  = 32'd25000,        // reference clock in kHz — UPDATE if using ext ref via MCLK
+    parameter [31:0] FREF_KHZ  = 32'd25000,        // reference clock in kHz — 25000 for old board (25 MHz crystal)
     parameter [31:0] FIXED_MOD = 32'd1000,         // fixed ADF4351 MOD value
-    parameter [31:0] R2_CFG    = 32'h18004062,     // MUXOUT=digital LD, PD_POL=+, CP=0.31mA, R=1
-    parameter [31:0] R3_CFG    = 32'h00000003,     // R3 defaults: clock divider off
-    parameter [31:0] R4_BASE   = 32'h008FA03C,     // BSCD=250 (100kHz margin), fundamental feedback, RF enabled
-    parameter [31:0] R5_CFG    = 32'h00200005      // LD pin mode = digital lock detect
+    parameter [31:0] R2_CFG    = 32'h18004E42,     // MUXOUT=digital LD, PD_POL=+, CP=2.5mA, R=1, PD=0
+    parameter [31:0] R3_CFG    = 32'h008004B3,     // ClkDiv=150, Band Select Clock Mode=fast
+    parameter [31:0] R4_BASE   = 32'h008FA03C,     // BSCD=250, fundamental feedback, RF enabled, +5dBm
+    parameter [31:0] R5_CFG    = 32'h00580005      // LD pin=digital lock detect, reserved bits correct
 ) (
     input  logic        clk,
     input  logic        rst,
@@ -182,7 +182,7 @@ module freq_calc #(
     assign r0 = {1'b0, int_r, frac_r, 3'b000};
 
     // R1: [26:15]=PHASE(=1, fixed), [14:3]=MOD, [2:0]=3'b001
-    assign r1 = {5'b0, 12'h001, FIXED_MOD[11:0], 3'b001};
+    assign r1 = {4'b0, 1'b1, 12'h001, FIXED_MOD[11:0], 3'b001}; // bit27=1: 8/9 prescaler required for INT≥75
 
     // R2, R3, R5: fixed hardware configuration
     assign r2 = R2_CFG;
