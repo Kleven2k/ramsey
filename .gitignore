@@ -42,15 +42,19 @@ data/characterization_*.json
 *.srcs/
 vivado_*.backup.*
 
-# Internal scaffolding / personal notes (not for public repo)
+# Internal scaffolding / personal notes 
 notebooks/odmr_physics_structure.md
 
 # Expo materials (poster, QR, slides — kept local)
 docs/expo/
 
-# Private / personal notes (not for public repo)
+# Private / personal notes 
 private/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude
+.claude
+CLAUDE.md

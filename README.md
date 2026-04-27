@@ -226,6 +226,7 @@ If you use this system in your work, please cite:
 ## References
 
 - [ODMR lab manual, Uni Siegen](https://www.physik.uni-siegen.de/nano-optics/education/teaching/lab_courses/odmr_manual_v1.3.1.pdf)
+- D. Fannin (KK6DF), *adf4351 — Arduino library for the ADF4351 Wideband Frequency Synthesizer*, GitHub, https://github.com/dfannin/adf4351
 
 ---
 

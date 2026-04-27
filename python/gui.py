@@ -64,9 +64,12 @@ def main():
     # Populated in on_config, read in on_packet to label the x-axis correctly.
     last_freqs_mhz   = []   # original (non-interleaved) sweep frequencies
     last_lock_in_en  = [False]  # wrapped in list so nonlocal assignment isn't needed
+    continuous       = [False]  # continuous sweep mode
 
     sweep_history  = []   # list of contrast arrays, newest last
     MAX_SWEEPS     = 60
+
+    last_sweep = {"freqs": [], "sig": [], "ref": [], "contrast": []}  # for CSV export
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
     def set_status(msg):
@@ -81,6 +84,8 @@ def main():
     def on_connect():
         if uart_comm.is_connected():
             uart_comm.disconnect()
+            continuous[0] = False
+            dpg.configure_item("start_btn", label="START")
             set_status("Disconnected")
             dpg.configure_item("connect_btn", label="Connect")
             dpg.bind_item_theme("connect_btn", "btn_red")
@@ -177,26 +182,59 @@ def main():
             set_status(f"Error: {e}")
 
     def on_start():
+        if continuous[0]:
+            continuous[0] = False
+            dpg.configure_item("start_btn", label="START")
+            set_status("Stopped")
+            return
         try:
+            continuous[0] = True
+            dpg.configure_item("start_btn", label="STOP")
             uart_comm.send_packet(uart_comm.MSG_START)
             set_status("Sent START - waiting for data...")
         except ConnectionError as e:
+            continuous[0] = False
+            dpg.configure_item("start_btn", label="START")
             set_status(f"Error: {e}")
 
     def on_demo():
         sweep_history.clear()
-        freq_start = dpg.get_value("freq_start")
-        freq_stop  = dpg.get_value("freq_stop")
-        freq_step  = dpg.get_value("freq_step")
-        f0_demo = (freq_start + freq_stop) / 2
-        freqs, payload = synthetic.default_sweep(
-            start=freq_start, stop=freq_stop, step=freq_step,
-            f0_mhz=f0_demo, contrast=0.05, gamma_mhz=(freq_stop - freq_start) / 20,
-            ref_counts=500000, seed=None,
-        )
+        freq_start  = dpg.get_value("freq_start")
+        freq_stop   = dpg.get_value("freq_stop")
+        freq_step   = dpg.get_value("freq_step")
+        lock_in_en  = dpg.get_value("lock_in_en")
+        delta_f_mhz = dpg.get_value("delta_f")
+        f0_demo     = (freq_start + freq_stop) / 2
+        gamma       = max((freq_stop - freq_start) / 20, freq_step * 3)
+
+        # Build base frequency list
+        freqs = []
+        f = freq_start
+        while f <= freq_stop + 1e-9:
+            freqs.append(round(f, 6))
+            f += freq_step
+
         last_freqs_mhz.clear()
         last_freqs_mhz.extend(freqs)
+        last_lock_in_en[0] = bool(lock_in_en)
         dpg.set_axis_limits("x_axis", freq_start, freq_stop)
+
+        if lock_in_en and delta_f_mhz > 0:
+            # Build interleaved freq table [f+df, f-df, ...]
+            interleaved = []
+            for fq in freqs:
+                interleaved.append(fq + delta_f_mhz)
+                interleaved.append(fq - delta_f_mhz)
+            payload = synthetic.generate_data_payload(
+                interleaved, f0_mhz=f0_demo, contrast=0.05,
+                gamma_mhz=gamma, ref_counts=500000,
+            )
+        else:
+            payload = synthetic.generate_data_payload(
+                freqs, f0_mhz=f0_demo, contrast=0.05,
+                gamma_mhz=gamma, ref_counts=500000,
+            )
+
         on_packet(uart_comm.MSG_DATA, list(payload))
 
     def update_heatmap(freqs, contrast):
@@ -227,6 +265,40 @@ def main():
         dpg.set_axis_ticks("hm_y_axis",
                            tuple((str(i), float(i))
                                  for i in range(0, n_sweeps + 1, step)))
+
+    def on_export():
+        import csv, datetime, os
+        if not last_sweep["freqs"]:
+            set_status("No data to export")
+            return
+        export_dir = os.path.join(os.path.dirname(__file__), "..", "data", "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(export_dir, f"odmr_{ts}.csv")
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["freq_mhz", "sig", "ref", "contrast"])
+            for row in zip(last_sweep["freqs"], last_sweep["sig"],
+                           last_sweep["ref"], last_sweep["contrast"]):
+                w.writerow(row)
+        set_status(f"Exported {len(last_sweep['freqs'])} pts → data/exports/{os.path.basename(path)}")
+
+    def _update_count_display(avg_sig, avg_ref):
+        n_shots  = max(dpg.get_value("n_shots"), 1)
+        readout  = max(dpg.get_value("readout_dur"), 1)
+        sig_shot = avg_sig / n_shots
+        ref_shot = avg_ref / n_shots
+        # count rate = counts per shot / readout window duration in seconds
+        rate_hz  = sig_shot / (readout * 10e-9)
+        if rate_hz >= 1e6:
+            rate_str = f"{rate_hz/1e6:.2f} Mcps"
+        elif rate_hz >= 1e3:
+            rate_str = f"{rate_hz/1e3:.1f} kcps"
+        else:
+            rate_str = f"{rate_hz:.0f} cps"
+        dpg.set_value("sig_per_shot", f"{sig_shot:.1f}")
+        dpg.set_value("ref_per_shot", f"{ref_shot:.1f}")
+        dpg.set_value("count_rate",   rate_str)
 
     def on_packet(msg_type, payload):
         if msg_type == uart_comm.MSG_ACK:
@@ -286,6 +358,9 @@ def main():
                 dpg.set_axis_limits("y_axis", e_min - margin, e_max + margin)
                 set_status(f"{n_pairs} pairs | {fit_info}")
                 update_heatmap(x_vals, error)
+                avg_sig = sum(sig_counts) // max(len(sig_counts), 1)
+                avg_ref = sum(ref_counts) // max(len(ref_counts), 1)
+                _update_count_display(avg_sig, avg_ref)
 
             else:
                 # ── Standard mode: Lorentzian fit ──────────────────────────────
@@ -316,8 +391,49 @@ def main():
                 avg_ref = sum(ref_counts) // max(len(ref_counts), 1)
                 set_status(f"{n_points_rx} pts | {fit_info} | sig={avg_sig} ref={avg_ref}")
                 update_heatmap(x_vals, contrast)
+                _update_count_display(avg_sig, avg_ref)
+                last_sweep.update({"freqs": x_vals, "sig": sig_counts,
+                                   "ref": ref_counts, "contrast": contrast})
+
+        if continuous[0]:
+            try:
+                uart_comm.send_packet(uart_comm.MSG_START)
+            except ConnectionError:
+                continuous[0] = False
+                dpg.configure_item("start_btn", label="START")
 
     uart_comm.set_packet_callback(on_packet)
+
+    # ── Presets ───────────────────────────────────────────────────────────────
+    PRESETS = {
+        "NV - CW ODMR": {
+            "n_shots": 1000, "init_dur": 5000, "mw_dur": 1000,
+            "dead_time": 0,  "readout_dur": 300, "ref_dur": 300,
+            "freq_start": 2800.0, "freq_stop": 2900.0, "freq_step": 1.0,
+        },
+        "NV - Pulsed ODMR": {
+            "n_shots": 5000, "init_dur": 3000, "mw_dur": 100,
+            "dead_time": 100, "readout_dur": 300, "ref_dur": 300,
+            "freq_start": 2820.0, "freq_stop": 2920.0, "freq_step": 1.0,
+        },
+        "SiV - 1.38 GHz": {
+            "n_shots": 1000, "init_dur": 5000, "mw_dur": 1000,
+            "dead_time": 0,  "readout_dur": 300, "ref_dur": 300,
+            "freq_start": 1330.0, "freq_stop": 1430.0, "freq_step": 1.0,
+        },
+        "Alignment (APD check)": {
+            "n_shots": 10000, "init_dur": 500, "mw_dur": 0,
+            "dead_time": 0,   "readout_dur": 300, "ref_dur": 300,
+            "freq_start": 2870.0, "freq_stop": 2870.0, "freq_step": 1.0,
+        },
+    }
+
+    def on_preset(sender, app_data):
+        p = PRESETS.get(app_data)
+        if not p:
+            return
+        for key, val in p.items():
+            dpg.set_value(key, val)
 
     # ── UI ────────────────────────────────────────────────────────────────────
     with dpg.window(tag="Primary Window"):
@@ -326,7 +442,7 @@ def main():
         with dpg.group(horizontal=True):
             dpg.add_text("Port:")
             dpg.add_combo(uart_comm.list_ports(), tag="port_combo", width=90)
-            dpg.add_button(label="↺", callback=refresh_ports, width=26)
+            dpg.add_button(label="R", callback=refresh_ports, width=26)
             dpg.add_button(label="Connect", tag="connect_btn",
                            callback=on_connect, width=100)
             dpg.add_text("|")
@@ -340,6 +456,12 @@ def main():
             # ── Control panel ─────────────────────────────────────────────────
             with dpg.child_window(width=230, height=-1, border=False):
 
+                dpg.add_text("PRESET", color=(150, 150, 150))
+                dpg.add_separator()
+                dpg.add_combo(list(PRESETS.keys()), tag="preset_combo",
+                              width=-1, callback=on_preset,
+                              default_value="NV - CW ODMR")
+                dpg.add_spacer(height=6)
                 dpg.add_text("TIMING  (clock cycles)", color=(150, 150, 150))
                 dpg.add_separator()
                 dpg.add_input_int(label="n_shots",       tag="n_shots",
@@ -385,12 +507,18 @@ def main():
                 dpg.add_spacer(height=2)
                 dpg.add_button(label="DEMO",   callback=on_demo,   width=-1,
                                tag="demo_btn")
+                dpg.add_spacer(height=2)
+                dpg.add_button(label="EXPORT CSV", callback=on_export, width=-1)
 
             dpg.add_spacer(width=4)
 
             # ── Plot panel ────────────────────────────────────────────────────
             with dpg.child_window(width=-1, height=-1, border=False):
-                with dpg.plot(label="ODMR Spectrum", height=370, width=-1,
+              with dpg.group(horizontal=True):
+
+                # ── Plots ────────────────────────────────────────────────────
+                with dpg.group():
+                  with dpg.plot(label="ODMR Spectrum", height=370, width=-130,
                               tag="odmr_plot"):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis,
@@ -408,10 +536,10 @@ def main():
                     dpg.set_axis_limits("x_axis", 1300, 1400)
                     dpg.set_axis_limits("y_axis", -0.1, 0.1)
 
-                dpg.add_spacer(height=4)
+                  dpg.add_spacer(height=4)
 
-                with dpg.plot(label="Sweep History", height=-1, width=-1,
-                              tag="history_plot", no_mouse_pos=True):
+                  with dpg.plot(label="Sweep History", height=-1, width=-130,
+                                tag="history_plot", no_mouse_pos=True):
                     dpg.add_plot_axis(dpg.mvXAxis,
                                       label="Frequency (MHz)",
                                       tag="hm_x_axis", no_gridlines=True)
@@ -427,7 +555,22 @@ def main():
                                         format="")
                     dpg.set_axis_limits("hm_x_axis", 1300, 1400)
                     dpg.set_axis_limits("hm_y_axis", 0, 1)
-                dpg.bind_colormap("history_plot", dpg.mvPlotColormap_Plasma)
+
+                # ── Count stats panel ────────────────────────────────────────
+                with dpg.child_window(width=120, height=-1, border=False):
+                    dpg.add_spacer(height=20)
+                    dpg.add_text("COUNTS", color=(150, 150, 150))
+                    dpg.add_separator()
+                    dpg.add_spacer(height=8)
+                    dpg.add_text("sig/shot", color=(100, 180, 255))
+                    dpg.add_text("—", tag="sig_per_shot")
+                    dpg.add_spacer(height=8)
+                    dpg.add_text("ref/shot", color=(180, 180, 180))
+                    dpg.add_text("—", tag="ref_per_shot")
+                    dpg.add_spacer(height=8)
+                    dpg.add_text("rate", color=(100, 220, 100))
+                    dpg.add_text("—", tag="count_rate")
+              dpg.bind_colormap("history_plot", dpg.mvPlotColormap_Plasma)
 
     # ── Apply themes and font ─────────────────────────────────────────────────
     dpg.bind_font(default_font)
