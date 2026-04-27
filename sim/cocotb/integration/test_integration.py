@@ -49,7 +49,7 @@ async def reset(dut):
     dut.ref_dur.value      = REF_DUR
     await ClockCycles(dut.clk, 4)
     dut.rst.value = 0
-    await RisingEdge(dut.clk)
+    await ClockCycles(dut.clk, 20)  # wait for DEPTH=16 clear cycles to complete
 
 async def pulse_run(dut):
     dut.run.value = 1

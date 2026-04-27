@@ -17,7 +17,7 @@ async def reset(dut):
     dut.rd_addr.value          = 0
     await ClockCycles(dut.clk, 4)
     dut.rst.value = 0
-    await RisingEdge(dut.clk)
+    await ClockCycles(dut.clk, 20)  # wait for DEPTH=16 clear cycles to complete
 
 async def close_sig_window(dut, count):
     """Set sig_count and drop gate for one cycle to trigger accumulation."""

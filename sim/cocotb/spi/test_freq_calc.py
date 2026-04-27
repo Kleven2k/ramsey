@@ -1,3 +1,4 @@
+import math
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ClockCycles
@@ -7,10 +8,15 @@ CLK_PERIOD_NS = 10  # 100 MHz
 FREF_KHZ  = 25_000
 FIXED_MOD = 1_000
 
+R2_CFG = 0x18004E42
+R3_CFG = 0x008004B3
+R4_BASE = 0x008FA03C
+R5_CFG = 0x00580005
+
 # ── Reference model ───────────────────────────────────────────────────────────
 
 def expected_values(freq_khz):
-    """Compute expected INT, FRAC, OUTDIV for a given frequency in kHz."""
+    """Compute expected INT, FRAC, MOD (GCD-reduced), OUTDIV for a given frequency in kHz."""
     for d_sel, d_val in enumerate([1, 2, 4, 8, 16, 32, 64]):
         fvco = freq_khz * d_val
         if 2_200_000 <= fvco <= 4_400_000:
@@ -18,7 +24,12 @@ def expected_values(freq_khz):
     INT  = fvco // FREF_KHZ
     rem  = fvco % FREF_KHZ
     FRAC = (rem * FIXED_MOD) // FREF_KHZ
-    return INT, FRAC, FIXED_MOD, d_sel
+    MOD  = FIXED_MOD
+    if FRAC > 0:
+        g = math.gcd(FRAC, MOD)
+        FRAC //= g
+        MOD  //= g
+    return INT, FRAC, MOD, d_sel
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,8 +82,8 @@ async def test_fractional_n(dut):
 
     freq = 1_350_050  # kHz — 50 kHz above 1350 MHz
     INT, FRAC, MOD, d_sel = expected_values(freq)
-    # fvco = 2700100 kHz, INT=108, remainder=100, FRAC=100*1000/25000=4
-    assert INT == 108 and FRAC == 4 and d_sel == 1
+    # fvco=2700100, INT=108, raw FRAC=4, MOD=1000 → GCD(4,1000)=4 → FRAC=1, MOD=250
+    assert INT == 108 and FRAC == 1 and MOD == 250 and d_sel == 1
 
     r0, _, _ = await calculate(dut, freq)
 
@@ -112,6 +123,7 @@ async def test_r1_mod_packed(dut):
     got_phase = (r1 >> 15) & 0xFFF
     got_addr  = r1 & 0x7
 
+    # 1350 MHz is integer-N (FRAC=0) so GCD reduction is skipped, MOD stays 1000
     assert got_mod   == 1000, f"MOD in R1: expected 1000, got {got_mod}"
     assert got_phase == 1,    f"PHASE in R1: expected 1, got {got_phase}"
     assert got_addr  == 1,    f"R1 addr bits: expected 1, got {got_addr}"
@@ -122,7 +134,6 @@ async def test_r4_base_preserved(dut):
     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
     await reset(dut)
 
-    R4_BASE = 0x00859CC4
     OUTDIV_MASK = 0x00700000  # bits [22:20]
 
     _, _, r4 = await calculate(dut, 1_350_000)
@@ -139,9 +150,9 @@ async def test_fixed_registers(dut):
 
     await calculate(dut, 1_350_000)
 
-    assert int(dut.r2.value) == 0x00004E42, f"R2: got 0x{int(dut.r2.value):08X}"
-    assert int(dut.r3.value) == 0x000004B3, f"R3: got 0x{int(dut.r3.value):08X}"
-    assert int(dut.r5.value) == 0x00580005, f"R5: got 0x{int(dut.r5.value):08X}"
+    assert int(dut.r2.value) == R2_CFG, f"R2: got 0x{int(dut.r2.value):08X}"
+    assert int(dut.r3.value) == R3_CFG, f"R3: got 0x{int(dut.r3.value):08X}"
+    assert int(dut.r5.value) == R5_CFG, f"R5: got 0x{int(dut.r5.value):08X}"
 
 @cocotb.test()
 async def test_sequential_calculations(dut):

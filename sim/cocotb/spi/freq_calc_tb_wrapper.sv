@@ -13,9 +13,9 @@ module freq_calc_tb_wrapper (
     freq_calc #(
         .FREF_KHZ  (32'd25000),
         .FIXED_MOD (32'd1000),
-        .R2_CFG    (32'h00004E42),
-        .R3_CFG    (32'h000004B3),
-        .R4_BASE   (32'h00859CC4),
+        .R2_CFG    (32'h18004E42),
+        .R3_CFG    (32'h008004B3),
+        .R4_BASE   (32'h008FA03C),
         .R5_CFG    (32'h00580005)
     ) dut (
         .clk      (clk),

@@ -47,6 +47,11 @@ module shot_accumulator #(
     logic [31:0] sig_mem [0:DEPTH-1];
     logic [31:0] ref_mem [0:DEPTH-1];
 
+    // ── Clear-on-reset/sweep-start state machine ─────────────────────────────
+    // Clears all memory entries in DEPTH cycles. Takes priority over RMW writes.
+    logic [AW-1:0] clr_ptr;
+    logic          clearing;
+
     // ── Write-side state ──────────────────────────────────────────────────────
     logic [AW-1:0] wr_ptr;    // current frequency point index
 
@@ -109,20 +114,34 @@ module shot_accumulator #(
         ref_waddr_q <= ref_waddr_d;
     end
 
-    // Stage 2 — write back sum
+    // Stage 2 — write back sum or clear (clear takes priority)
     always_ff @(posedge clk) begin
-        if (sig_wen_q)
-            sig_mem[sig_waddr_q] <= sig_rdata + sig_add_q;
-        if (ref_wen_q)
-            ref_mem[ref_waddr_q] <= ref_rdata + ref_add_q;
+        if (clearing) begin
+            sig_mem[clr_ptr] <= 32'd0;
+            ref_mem[clr_ptr] <= 32'd0;
+        end else begin
+            if (sig_wen_q)
+                sig_mem[sig_waddr_q] <= sig_rdata + sig_add_q;
+            if (ref_wen_q)
+                ref_mem[ref_waddr_q] <= ref_rdata + ref_add_q;
+        end
     end
 
-    // ── Write pointer + clear ─────────────────────────────────────────────────
+    // ── Write pointer + clear state machine ──────────────────────────────────
     always_ff @(posedge clk) begin
         if (rst) begin
-            wr_ptr <= '0;
+            wr_ptr  <= '0;
+            clr_ptr <= '0;
+            clearing <= 1'b1;
         end else if (sweep_start) begin
-            wr_ptr <= '0;
+            wr_ptr  <= '0;
+            clr_ptr <= '0;
+            clearing <= 1'b1;
+        end else if (clearing) begin
+            if (clr_ptr == AW'(DEPTH - 1))
+                clearing <= 1'b0;
+            else
+                clr_ptr <= clr_ptr + 1'b1;
         end else if (sweep_point_done) begin
             wr_ptr <= wr_ptr + 1'b1;
         end
