@@ -182,19 +182,10 @@ def main():
             set_status(f"Error: {e}")
 
     def on_start():
-        if continuous[0]:
-            continuous[0] = False
-            dpg.configure_item("start_btn", label="START")
-            set_status("Stopped")
-            return
         try:
-            continuous[0] = True
-            dpg.configure_item("start_btn", label="STOP")
             uart_comm.send_packet(uart_comm.MSG_START)
             set_status("Sent START - waiting for data...")
         except ConnectionError as e:
-            continuous[0] = False
-            dpg.configure_item("start_btn", label="START")
             set_status(f"Error: {e}")
 
     def on_demo():

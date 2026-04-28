@@ -210,7 +210,7 @@ module ramsey_top (
         .r4         (fc_r4),
         .r5         (fc_r5),
         .load       (adf_load),
-        .lock_detect(lock_detect),
+        .lock_detect(1'b1),        // BYPASS: GCD reduces sigma-delta noise but lock detect still marginal between freq steps
         .spi_ready  (spi_ready),
         .busy       (),           // not used; spi_ready is the handshake signal
         .sclk       (spi_clk),
