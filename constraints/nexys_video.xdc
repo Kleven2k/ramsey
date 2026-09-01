@@ -153,7 +153,7 @@ set_property -dict { PACKAGE_PIN V18   IOSTANDARD LVCMOS33 } [get_ports { uart_r
 ## Ramsey hardware signals — Pmod JB (bank 34, LVCMOS33)
 ## Remap these to whichever Pmod connector is physically convenient.
 set_property -dict { PACKAGE_PIN V9   IOSTANDARD LVCMOS33 } [get_ports { laser_gate }]; #JB pin 1
-set_property -dict { PACKAGE_PIN V8   IOSTANDARD LVCMOS33 } [get_ports { mw_gate    }]; #JB pin 2
+set_property -dict { PACKAGE_PIN V8   IOSTANDARD LVCMOS33 } [get_ports { mw_gate_out }]; #JB pin 2
 set_property -dict { PACKAGE_PIN V7   IOSTANDARD LVCMOS33 } [get_ports { apd_in     }]; #JB pin 3  (input from APD)
 
 ## ADF4351 SPI — Pmod JC (bank 34, LVCMOS33)

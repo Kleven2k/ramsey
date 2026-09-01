@@ -22,7 +22,9 @@
 //   [22:25] dead_time    uint32   dead time between MW pulses, clock cycles
 //   [26]    lock_in_en   uint8    1 = lock-in (FSK) mode, 0 = standard sweep
 //   [27:30] delta_f_khz  uint32   FSK half-step in kHz (ignored if lock_in_en=0)
-//   [31+]   freq_table   uint32[] target output frequency in kHz, one per point
+//   [31]    fb_enable    uint8    1 = feedback active reset enabled, 0 = disabled
+//   [32:35] fb_threshold uint32   photon count threshold for spin state decision
+//   [36+]   freq_table   uint32[] target output frequency in kHz, one per point
 //                                 (interleaved f+df/f-df pairs when lock_in_en=1)
 //
 // DATA payload: for each point, 4 bytes sig (MSB first) then 4 bytes ref.
@@ -41,7 +43,7 @@ module ramsey_top (
 
     // Pulse sequencer hardware outputs
     output logic        laser_gate,     // to AOM driver
-    output logic        mw_gate,        // to RF switch (low-power side)
+    output logic        mw_gate_out,    // to RF switch (mw_gate | mw_correction)
 
     // ADF4351 SPI
     output logic        spi_clk,
@@ -61,8 +63,8 @@ module ramsey_top (
     localparam logic [7:0] MSG_ACK    = 8'h04;
     localparam logic [7:0] MSG_DATA   = 8'h05;
 
-    // CONFIG payload: header fields occupy bytes 0–30; freq table starts at 31
-    localparam int CFG_FREQ_BASE = 31;
+    // CONFIG payload: header fields occupy bytes 0–35; freq table starts at 36
+    localparam int CFG_FREQ_BASE = 36;
 
     // ── UART interface ────────────────────────────────────────────────────────
     logic [7:0]  rx_msg_type;
@@ -109,6 +111,8 @@ module ramsey_top (
     logic        sweep_point_done;
     logic        spi_ready;
     logic        seq_run;
+    logic        mw_gate;
+    logic        mw_correction;   // from feedback_ctrl — declared here to avoid forward-reference
 
     pulse_sequencer u_seq (
         .clk             (clk),
@@ -130,6 +134,8 @@ module ramsey_top (
         .next_freq       (),             // handled by main FSM
         .busy            ()              // not used at top level
     );
+
+    assign mw_gate_out = mw_gate | mw_correction;
 
     // ── Photon counters (signal + reference, shared APD input) ────────────────
     // Both counters receive the same APD pulses but count during different
@@ -172,6 +178,43 @@ module ramsey_top (
         .rd_sig          (rd_sig),
         .rd_ref          (rd_ref),
         .freq_index      ()              // not used at top level
+    );
+
+    // ── Feedback modules ──────────────────────────────────────────────────────
+    logic [31:0] fb_threshold_r;
+    logic        fb_enable_r;
+    logic        spin_state, fb_valid;
+    logic [31:0] latency_cycles;
+    logic        latency_valid;
+
+    state_discriminator u_disc (
+        .clk       (clk),
+        .rst       (rst),
+        .count     (sig_count),
+        .threshold (fb_threshold_r),
+        .gate_in   (gate),
+        .spin_state(spin_state),
+        .valid     (fb_valid)
+    );
+
+    feedback_ctrl u_fb (
+        .clk            (clk),
+        .rst            (rst),
+        .valid          (fb_valid),
+        .spin_state     (spin_state),
+        .enable         (fb_enable_r),
+        .correction_dur (mw_dur_r),     // reuse mw_dur as π pulse duration
+        .mw_correction  (mw_correction),
+        .busy           ()
+    );
+
+    latency_counter u_lat (
+        .clk           (clk),
+        .rst           (rst),
+        .gate_in       (gate),
+        .mw_correction (mw_correction),
+        .latency_cycles(latency_cycles),
+        .latency_valid (latency_valid)
     );
 
     // ── freq_calc ─────────────────────────────────────────────────────────────
@@ -222,6 +265,8 @@ module ramsey_top (
     logic [15:0] n_points_r;
     logic        lock_in_en_r;
     logic [31:0] delta_f_khz_r;
+    // fb registers initialised to safe defaults (feedback off, threshold 0)
+
     // freq_table: read combinationally by freq_calc; written by CONFIG parser.
     // Infers as distributed RAM on Artix-7 (~512 LUTs for 1024 × 32-bit entries).
     logic [31:0] freq_table [0:1023];
@@ -249,6 +294,8 @@ module ramsey_top (
             dead_time_r   <= 32'd0;      // CW ODMR default
             lock_in_en_r  <= 1'b0;
             delta_f_khz_r <= 32'd0;
+            fb_enable_r   <= 1'b0;
+            fb_threshold_r<= 32'd0;
             freq_shift    <= 32'd0;
         end else begin
             if (rx_msg_done) begin
@@ -283,19 +330,24 @@ module ramsey_top (
                     16'd23: dead_time_r[23:16]   <= rx_payload_byte;
                     16'd24: dead_time_r[15:8]    <= rx_payload_byte;
                     16'd25: dead_time_r[7:0]     <= rx_payload_byte;
-                    16'd26: lock_in_en_r         <= rx_payload_byte[0];
-                    16'd27: delta_f_khz_r[31:24] <= rx_payload_byte;
-                    16'd28: delta_f_khz_r[23:16] <= rx_payload_byte;
-                    16'd29: delta_f_khz_r[15:8]  <= rx_payload_byte;
-                    16'd30: delta_f_khz_r[7:0]   <= rx_payload_byte;
+                    16'd26: lock_in_en_r          <= rx_payload_byte[0];
+                    16'd27: delta_f_khz_r[31:24]  <= rx_payload_byte;
+                    16'd28: delta_f_khz_r[23:16]  <= rx_payload_byte;
+                    16'd29: delta_f_khz_r[15:8]   <= rx_payload_byte;
+                    16'd30: delta_f_khz_r[7:0]    <= rx_payload_byte;
+                    16'd31: fb_enable_r            <= rx_payload_byte[0];
+                    16'd32: fb_threshold_r[31:24]  <= rx_payload_byte;
+                    16'd33: fb_threshold_r[23:16]  <= rx_payload_byte;
+                    16'd34: fb_threshold_r[15:8]   <= rx_payload_byte;
+                    16'd35: fb_threshold_r[7:0]    <= rx_payload_byte;
                     default: begin
                         // Frequency table entries — 4 bytes big-endian per word.
                         // Accumulate into freq_shift; write on the 4th byte of each word.
-                        // CFG_FREQ_BASE=31 (≡ 3 mod 4), so last bytes of words fall at
-                        // ptr 34, 38, 42, ... which all have bits[1:0] == 2'b10.
+                        // CFG_FREQ_BASE=36 (≡ 0 mod 4), so last bytes of words fall at
+                        // ptr 39, 43, 47, ... which all have bits[1:0] == 2'b11.
                         freq_shift <= {freq_shift[23:0], rx_payload_byte};
-                        if (cfg_byte_ptr[1:0] == 2'b10 && cfg_byte_ptr >= 16'd34) begin
-                            freq_table[(cfg_byte_ptr - 16'd31) >> 2] <=
+                        if (cfg_byte_ptr[1:0] == 2'b11 && cfg_byte_ptr >= 16'd39) begin
+                            freq_table[(cfg_byte_ptr - 16'd36) >> 2] <=
                                 {freq_shift[23:0], rx_payload_byte};
                         end
                     end

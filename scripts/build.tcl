@@ -42,6 +42,10 @@ read_verilog -sv rtl/spi/spi_master.sv
 read_verilog -sv rtl/spi/adf4351_ctrl.sv
 read_verilog -sv rtl/spi/freq_calc.sv
 
+read_verilog -sv rtl/feedback/state_discriminator.sv
+read_verilog -sv rtl/feedback/feedback_ctrl.sv
+read_verilog -sv rtl/feedback/latency_counter.sv
+
 # Top level last
 read_verilog -sv rtl/ramsey_top.sv
 
