@@ -21,7 +21,8 @@ async def pulse_gate(dut, cycles):
     dut.gate_in.value = 1
     await ClockCycles(dut.clk, cycles)
     dut.gate_in.value = 0
-    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)   # gate_prev captures 1, gate_in=0 seen
+    await RisingEdge(dut.clk)   # RTL latches valid=1 on this edge
 
 
 # ---------------------------------------------------------------------------
@@ -155,10 +156,10 @@ async def test_fb_correction_when_dark(dut):
 
     # Trigger
     dut.valid.value = 1
-    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)   # RTL samples valid=1
     dut.valid.value = 0
+    await RisingEdge(dut.clk)   # RTL asserts mw_correction
 
-    # mw_correction should be high immediately
     assert dut.mw_correction.value == 1, "correction should start"
     assert dut.busy.value == 1,          "busy during correction"
 
