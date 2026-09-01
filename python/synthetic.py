@@ -56,6 +56,47 @@ def generate_data_payload(
     return payload
 
 
+def generate_data_payload_split(
+    freqs_mhz,
+    f0_mhz      = 2870.0,  # zero-field splitting centre (MHz)
+    b_field_mt  = 1.0,     # applied field in milliTesla
+    contrast    = 0.05,
+    gamma_mhz   = 5.0,
+    ref_counts  = 50000,
+    n_shots     = 1,
+    seed        = None,
+):
+    """Two-dip ODMR spectrum simulating an applied magnetic field.
+
+    The field splits ms=+1 and ms=-1 symmetrically around f0:
+        splitting = 2 * gamma_e * B = 2 * 28 MHz/mT * b_field_mt
+    Each dip is a Lorentzian with the same contrast and linewidth.
+    """
+    rng      = np.random.default_rng(seed)
+    f        = np.asarray(freqs_mhz, dtype=float)
+    gamma_e  = 28.0          # MHz per mT (electron gyromagnetic ratio)
+    delta    = gamma_e * b_field_mt   # half-splitting in MHz
+
+    f_minus  = f0_mhz - delta
+    f_plus   = f0_mhz + delta
+
+    hw = gamma_mhz / 2
+    dip_minus = -contrast * hw**2 / ((f - f_minus)**2 + hw**2)
+    dip_plus  = -contrast * hw**2 / ((f - f_plus )**2 + hw**2)
+    ideal     = dip_minus + dip_plus
+
+    ref_arr = rng.poisson(ref_counts, size=len(f)).astype(np.int64)
+    sig_arr = rng.poisson(
+        np.clip(ref_counts * (1 + ideal), 1, None), size=len(f)
+    ).astype(np.int64)
+
+    payload = bytearray()
+    for sig, ref in zip(sig_arr, ref_arr):
+        payload += int(sig).to_bytes(4, 'big')
+        payload += int(ref).to_bytes(4, 'big')
+    return payload
+
+
 def default_sweep(start=1280.0, stop=1380.0, step=2.0, **kwargs):
     """Convenience wrapper: build a freq list and return (freqs_mhz, payload)."""
     freqs = []

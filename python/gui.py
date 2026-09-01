@@ -64,6 +64,7 @@ def main():
     # Populated in on_config, read in on_packet to label the x-axis correctly.
     last_freqs_mhz   = []   # original (non-interleaved) sweep frequencies
     last_lock_in_en  = [False]  # wrapped in list so nonlocal assignment isn't needed
+    last_bfield_demo = [False]  # suppress single Lorentzian fit in B-field demo mode
     continuous       = [False]  # continuous sweep mode
 
     sweep_history  = []   # list of contrast arrays, newest last
@@ -117,6 +118,10 @@ def main():
         readout_dur  = dpg.get_value("readout_dur")
         ref_dur      = dpg.get_value("ref_dur")
 
+        # Feedback parameters
+        fb_enable    = 1 if dpg.get_value("fb_enable") else 0
+        fb_threshold = dpg.get_value("fb_threshold")
+
         # Lock-in parameters
         lock_in_en  = 1 if dpg.get_value("lock_in_en") else 0
         delta_f_mhz = dpg.get_value("delta_f")
@@ -137,7 +142,8 @@ def main():
 
         last_freqs_mhz.clear()
         last_freqs_mhz.extend(freqs_mhz)
-        last_lock_in_en[0] = bool(lock_in_en)
+        last_lock_in_en[0]  = bool(lock_in_en)
+        last_bfield_demo[0] = False
 
         # Update x-axis to match new sweep range
         dpg.set_axis_limits("x_axis", freq_start, freq_stop)
@@ -153,7 +159,7 @@ def main():
         n_points_table = len(table_freqs_mhz)
 
         # ── Build CONFIG payload ───────────────────────────────────────────────
-        # Header (31 bytes):
+        # Header (36 bytes):
         #   [0-1]   n_points_table uint16 big-endian  (2× n_points if lock-in)
         #   [2-5]   n_shots        uint32
         #   [6-9]   init_dur       uint32
@@ -162,7 +168,9 @@ def main():
         #   [18-21] ref_dur        uint32
         #   [22-25] dead_time      uint32
         #   [26]    lock_in_en     uint8
-        #   [27-30] delta_f_khz   uint32
+        #   [27-30] delta_f_khz    uint32
+        #   [31]    fb_enable      uint8
+        #   [32-35] fb_threshold   uint32
         # Followed by n_points_table × uint32 frequency values in kHz
         payload = []
         payload += list(n_points_table.to_bytes(2, 'big'))
@@ -170,6 +178,8 @@ def main():
             payload += list(int(val).to_bytes(4, 'big'))
         payload += [lock_in_en & 0x01]
         payload += list(delta_f_khz.to_bytes(4, 'big'))
+        payload += [fb_enable & 0x01]
+        payload += list(int(fb_threshold).to_bytes(4, 'big'))
         for f_mhz in table_freqs_mhz:
             f_khz = int(round(f_mhz * 1000))
             payload += list(f_khz.to_bytes(4, 'big'))
@@ -207,7 +217,8 @@ def main():
 
         last_freqs_mhz.clear()
         last_freqs_mhz.extend(freqs)
-        last_lock_in_en[0] = bool(lock_in_en)
+        last_lock_in_en[0]  = bool(lock_in_en)
+        last_bfield_demo[0] = False
         dpg.set_axis_limits("x_axis", freq_start, freq_stop)
 
         if lock_in_en and delta_f_mhz > 0:
@@ -227,6 +238,62 @@ def main():
             )
 
         on_packet(uart_comm.MSG_DATA, list(payload))
+
+    def on_demo_bfield():
+        """Two-dip B-field demo. Auto-scales sweep window to always show both dips."""
+        sweep_history.clear()
+        b_mt       = dpg.get_value("demo_b_field")
+        # If user drags slider manually, uncheck Earth's field preset
+        if dpg.does_item_exist("demo_earth_field") and b_mt != 0.05:
+            dpg.set_value("demo_earth_field", False)
+            dpg.configure_item("demo_b_field", enabled=True)
+        f0         = 2870.0
+        gamma_e    = 28.0       # MHz/mT
+        half_split = gamma_e * b_mt
+        gamma_mhz  = 5.0        # fixed realistic linewidth
+
+        # Window: always show both dips with 20 MHz margin each side
+        margin     = max(20.0, half_split * 0.3)
+        freq_start = round(f0 - half_split - margin, 1)
+        freq_stop  = round(f0 + half_split + margin, 1)
+        freq_step  = max(0.5, round((freq_stop - freq_start) / 200, 1))
+
+        freqs = []
+        f = freq_start
+        while f <= freq_stop + 1e-9:
+            freqs.append(round(f, 6))
+            f += freq_step
+
+        last_freqs_mhz.clear()
+        last_freqs_mhz.extend(freqs)
+        last_lock_in_en[0]  = False
+        last_bfield_demo[0] = True
+        dpg.set_axis_limits("x_axis", freq_start, freq_stop)
+
+        payload = synthetic.generate_data_payload_split(
+            freqs,
+            f0_mhz     = f0,
+            b_field_mt = b_mt,
+            contrast   = 0.05,
+            gamma_mhz  = gamma_mhz,
+            ref_counts = 500000,
+        )
+        on_packet(uart_comm.MSG_DATA, list(payload))
+        set_status(
+            f"B-field demo: B={b_mt:.1f} mT  "
+            f"f- = {f0 - half_split:.1f} MHz  "
+            f"f+ = {f0 + half_split:.1f} MHz  "
+            f"splitting = {2*half_split:.1f} MHz"
+        )
+
+    def on_earth_field_toggle():
+        if dpg.get_value("demo_earth_field"):
+            # Lock slider to Earth's field (50 µT = 0.05 mT)
+            dpg.set_value("demo_b_field", 0.05)
+            dpg.configure_item("demo_b_field", enabled=False)
+        else:
+            dpg.configure_item("demo_b_field", enabled=True)
+        on_demo_bfield()
 
     def update_heatmap(freqs, contrast):
         n_freqs = len(freqs)
@@ -362,17 +429,31 @@ def main():
 
                 dpg.set_value("contrast_series", [x_vals, contrast])
 
-                result = lorentzian_fit.fit(x_vals, contrast)
-                if result:
-                    dpg.set_value("fit_series", [x_vals, result["fitted_y"]])
-                    fit_info = (
-                        f"f0 = {result['f0']:.2f} +/- {result['f0_err']:.2f} MHz  "
-                        f"FWHM = {result['gamma']:.2f} MHz  "
-                        f"A = {result['a']*100:.2f}%"
-                    )
+                if last_bfield_demo[0]:
+                    result = lorentzian_fit.fit_split(x_vals, contrast)
+                    if result:
+                        dpg.set_value("fit_series", [x_vals, result["fitted_y"]])
+                        fit_info = (
+                            f"f- = {result['f_minus']:.1f} MHz  "
+                            f"f+ = {result['f_plus']:.1f} MHz  "
+                            f"splitting = {result['splitting']:.1f} MHz  "
+                            f"B = {result['b_field_mt']:.2f} mT"
+                        )
+                    else:
+                        dpg.set_value("fit_series", [[], []])
+                        fit_info = f"{n_points_rx} pts | B-field demo | fit failed"
                 else:
-                    dpg.set_value("fit_series", [[], []])
-                    fit_info = "fit failed"
+                    result = lorentzian_fit.fit(x_vals, contrast)
+                    if result:
+                        dpg.set_value("fit_series", [x_vals, result["fitted_y"]])
+                        fit_info = (
+                            f"f0 = {result['f0']:.2f} +/- {result['f0_err']:.2f} MHz  "
+                            f"FWHM = {result['gamma']:.2f} MHz  "
+                            f"A = {result['a']*100:.2f}%"
+                        )
+                    else:
+                        dpg.set_value("fit_series", [[], []])
+                        fit_info = "fit failed"
 
                 c_min = min(contrast)
                 c_max = max(contrast)
@@ -486,6 +567,14 @@ def main():
                 dpg.add_input_float(label="df (MHz)", tag="delta_f",
                                     default_value=0.5, width=120, format="%.2f")
 
+                dpg.add_spacer(height=6)
+                dpg.add_text("FEEDBACK  (active reset)", color=(150, 150, 150))
+                dpg.add_separator()
+                dpg.add_checkbox(label="enable", tag="fb_enable",
+                                 default_value=False)
+                dpg.add_input_int(label="threshold", tag="fb_threshold",
+                                  default_value=0, width=120)
+
                 dpg.add_spacer(height=10)
                 dpg.add_separator()
                 dpg.add_spacer(height=4)
@@ -498,6 +587,17 @@ def main():
                 dpg.add_spacer(height=2)
                 dpg.add_button(label="DEMO",   callback=on_demo,   width=-1,
                                tag="demo_btn")
+                dpg.add_spacer(height=6)
+                dpg.add_text("DEMO  B-field", color=(150, 150, 150))
+                dpg.add_separator()
+                dpg.add_checkbox(label="Earth's field (50 uT)", tag="demo_earth_field",
+                                 default_value=False, callback=on_earth_field_toggle)
+                dpg.add_slider_float(label="B (mT)", tag="demo_b_field",
+                                     default_value=1.0, min_value=0.0, max_value=5.0,
+                                     width=-1, format="%.2f mT",
+                                     callback=on_demo_bfield)
+                dpg.add_button(label="DEMO (B-field)", callback=on_demo_bfield, width=-1,
+                               tag="demo_bfield_btn")
                 dpg.add_spacer(height=2)
                 dpg.add_button(label="EXPORT CSV", callback=on_export, width=-1)
 
@@ -569,6 +669,7 @@ def main():
     dpg.bind_item_theme("connect_btn",      "btn_red")
     dpg.bind_item_theme("start_btn",        "btn_accent")
     dpg.bind_item_theme("demo_btn",         "btn_accent")
+    dpg.bind_item_theme("demo_bfield_btn", "btn_accent")
     dpg.bind_item_theme("contrast_series",  "contrast_series_theme")
     dpg.bind_item_theme("fit_series",       "fit_series_theme")
 

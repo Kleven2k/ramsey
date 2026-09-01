@@ -74,6 +74,74 @@ def fit(freqs_mhz, contrast):
     }
 
 
+def fit_split(freqs_mhz, contrast):
+    """Fit two Lorentzian dips to a B-field-split ODMR spectrum.
+
+    Returns dict with keys:
+        f_minus, f_plus : dip center frequencies (MHz)
+        splitting       : f_plus - f_minus (MHz)
+        b_field_mt      : estimated field strength in mT (splitting / 56 MHz/mT)
+        fitted_y        : combined fit curve
+    or None if fit failed.
+    """
+    f = np.asarray(freqs_mhz, dtype=float)
+    c = np.asarray(contrast,   dtype=float)
+
+    if len(f) < 8:
+        return None
+
+    window   = max(1, len(c) // 20)
+    c_smooth = np.convolve(c, np.ones(window) / window, mode='same')
+
+    # Find two deepest minima separated by at least 10% of the sweep range
+    min_sep  = max(2, len(f) // 10)
+    idx1     = int(np.argmin(c_smooth))
+    masked   = c_smooth.copy()
+    lo       = max(0, idx1 - min_sep)
+    hi       = min(len(f), idx1 + min_sep)
+    masked[lo:hi] = 0.0
+    idx2     = int(np.argmin(masked))
+
+    if idx2 == idx1 or masked[idx2] >= 0:
+        return None
+
+    # Order left to right
+    i_lo, i_hi = sorted([idx1, idx2])
+    f0_lo  = f[i_lo]
+    f0_hi  = f[i_hi]
+    a_guess    = max(-c_smooth[i_lo], -c_smooth[i_hi], 1e-5)
+    gamma_guess = (f[-1] - f[0]) / 20
+
+    def two_lorentzians(freq, f1, f2, a, gamma):
+        hw = gamma / 2
+        return (-a * hw**2 / ((freq - f1)**2 + hw**2)
+                - a * hw**2 / ((freq - f2)**2 + hw**2))
+
+    p0     = [f0_lo, f0_hi, a_guess, gamma_guess]
+    bounds = (
+        [f[0],        f[0],        0,    0           ],
+        [f[-1],       f[-1],       1.0,  f[-1]-f[0]  ],
+    )
+
+    try:
+        popt, _ = curve_fit(two_lorentzians, f, c, p0=p0, bounds=bounds, maxfev=20000)
+    except (RuntimeError, ValueError):
+        return None
+
+    f1, f2, a, gamma = popt
+    f_minus  = min(f1, f2)
+    f_plus   = max(f1, f2)
+    splitting = f_plus - f_minus
+
+    return {
+        "f_minus":    float(f_minus),
+        "f_plus":     float(f_plus),
+        "splitting":  float(splitting),
+        "b_field_mt": float(splitting / 56.0),
+        "fitted_y":   two_lorentzians(f, *popt).tolist(),
+    }
+
+
 def zero_crossing(freqs_mhz, error_signal):
     """Find the resonance frequency from a lock-in (FSK) error signal.
 
