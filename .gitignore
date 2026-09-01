@@ -51,6 +51,15 @@ docs/expo/
 # Private / personal notes 
 private/
 
+# Proof
+Arduino/
+
+# Generated outputs
+odmr_sweep.png
+data/exports/
+assets/*.jpg
+assets/*.jpeg
+
 # OS
 .DS_Store
 Thumbs.db
