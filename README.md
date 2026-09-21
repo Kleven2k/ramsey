@@ -100,6 +100,14 @@ All signals are 3.3 V LVCMOS. Connect the ADF4351 and APD to the Pmod headers as
 
 > **Note:** `rst_n` is on pin G4 (bank 35, 1.5 V). The IOSTANDARD must be `LVCMOS15` — using `LVCMOS33` holds the FPGA in permanent reset.
 
+### Bench setup
+
+<p align="center">
+<img src="assets/fpga_odmr_oppsett.jpg" alt="Ramsey hardware setup on the bench" width="75%">
+</p>
+
+Nexys Video FPGA board connected via Pmod cables to the ADF4351 module and APD, with the USB-UART link back to the host PC.
+
 ## UART protocol
 
 Packet format: `[0xAA][TYPE][LEN_HI][LEN_LO][PAYLOAD][CRC]` — CRC is XOR of all payload bytes.
@@ -222,6 +230,10 @@ If you use this system in your work, please cite:
   url     = {https://github.com/Kleven2k/ramsey}
 }
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).
 
 ## References
 
