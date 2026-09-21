@@ -103,7 +103,7 @@ All signals are 3.3 V LVCMOS. Connect the ADF4351 and APD to the Pmod headers as
 ### Bench setup
 
 <p align="center">
-<img src="assets/fpga_odmr_oppsett.jpg" alt="Ramsey hardware setup on the bench" width="75%">
+<img src="assets/fpga_odmr_oppsett.jpeg" alt="Ramsey hardware setup on the bench" width="75%">
 </p>
 
 Nexys Video FPGA board connected via Pmod cables to the ADF4351 module and APD, with the USB-UART link back to the host PC.

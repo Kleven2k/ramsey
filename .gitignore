@@ -59,6 +59,7 @@ odmr_sweep.png
 data/exports/
 assets/*.jpg
 assets/*.jpeg
+!assets/fpga_odmr_oppsett.jpeg
 
 # OS
 .DS_Store
