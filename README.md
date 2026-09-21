@@ -1,5 +1,5 @@
 <div align="center">
-<img src="assets/logo_ramsey_dark.svg" width="250" height="250"/>
+<img src="ramsey_logo.png" width="250" height="250"/>
 
 # ramsey
 
