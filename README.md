@@ -53,6 +53,7 @@ See [`notebooks/odmr_physics.ipynb`](notebooks/odmr_physics.ipynb) for the full 
 <p align="center">
 <img src="assets/block_diagram_portrait.svg" width="75%" />
 </p>
+
 See [`docs/system_overview.md`](docs/system_overview.md) for a detailed description of each RTL module, the UART protocol, and the Python stack.
 
 ## Hardware
@@ -142,6 +143,7 @@ data/         Characterization data schema
 <p align="center">
 <img src="assets/gui_demo.png" alt="GUI demo" width="75%">
 </p>
+
 The GUI runs in demo mode without any hardware. A synthetic ODMR sweep is generated with realistic Poisson noise, the Lorentzian fit updates live, and the extracted resonance frequency is shown in the status bar.
 
 ## Getting started
